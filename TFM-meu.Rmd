@@ -1,0 +1,695 @@
+---
+title: "TFM meu"
+author: "Andreu Reviriego"
+date: "2025-04-02"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+```{r}
+#LLIBRERIES
+
+library(readxl)
+library(fracdiff)
+library(forecast)
+library(tseries)
+library(tsfgrnn)
+library(tsm)
+library(dlm)
+library(stats)
+library(segmented)
+
+#CÀRREGA DE DADES
+a_mes <- read_excel("AREA x MES complet.xlsx")
+colnames(a_mes) <- unlist(a_mes[1,])
+a_mes=a_mes[-1,]
+
+
+
+
+```
+
+
+```{r}
+#DETERMINACIÓ DELS PUNTS DE CANVI DE TENDÈNCIA
+area_total=c()
+for(i in 3:134){
+  area_total=c(area_total,as.numeric(a_mes[18,i]))
+}
+y=area_total[1:132]
+z=1:132
+#fit simple linear regression model
+fit <- lm(y ~ z)
+
+#fit piecewise regression model to original model, estimating a breakpoint at x=9
+segmented.fit <- segmented(fit, seg.Z = ~z, psi=c(100,120))
+
+#view summary of segmented model
+summary(segmented.fit)[12] 
+serie=ts(data=y,start=1,end=132,frequency = 1)
+plot(serie)
+points(88, serie[88], col = "red", pch = 19, cex=2)
+points(108, serie[108], col = "red", pch = 19, cex=2)
+```
+
+
+
+```{r}
+
+#CREACIÓ DE VECTORS
+
+pre_a_total=c()
+durant_a_total=c()
+post_a_total=c()
+post1_a_total=c()
+for(i in 3:101){
+  pre_a_total=c(pre_a_total,as.numeric(a_mes[18,i]))
+  }
+for(i in 102:108){
+  durant_a_total=c(durant_a_total,as.numeric(a_mes[18,i]))
+}
+for(i in 109:120){
+  post_a_total=c(post_a_total,as.numeric(a_mes[18,i]))
+}
+for(i in 121:134){
+  post1_a_total=c(post1_a_total,as.numeric(a_mes[18,i]))
+}
+
+PREDURANTPOST1_TOTAL=c(pre_a_total,durant_a_total,post_a_total,post1_a_total)
+```
+
+
+
+```{r}
+estad_pre_a_total=c(mean(pre_a_total),var(pre_a_total),length(pre_a_total))
+
+estad_durant_a_total=c(mean(durant_a_total),var(durant_a_total),length(durant_a_total))
+
+estad_post_a_total=c(mean(post_a_total),var(post_a_total),length(post_a_total))
+estad_post1_a_total=c(mean(post1_a_total),var(post1_a_total),length(post1_a_total))
+
+
+taula=data.frame(estad_pre_a_total,estad_durant_a_total,estad_post_a_total,estad_post1_a_total,
+
+row.names =c("Media","Varianza","Tamaño"))
+
+
+names(taula)=c("pretotal","duranttotal","posttotal","post1total")
+taula
+
+
+
+shapiro.test(pre_a_total)$p.value #NORMAL
+shapiro.test(durant_a_total)$p.value #NORMAL
+shapiro.test(post_a_total)$p.value #NO NORMAL
+shapiro.test(post1_a_total)$p.value #NO NORMAL
+
+t.test(pre_a_total)$conf.int[c(1,2)]
+t.test(durant_a_total)#$conf.int[c(1,2)] 
+wilcox.test(post_a_total,conf.int=TRUE)#$conf.int[c(1,2)]
+wilcox.test(post1_a_total,conf.int=TRUE)#$conf.int[c(1,2)] 
+
+
+
+```
+
+
+
+
+
+```{r}
+set.seed(100)
+A_total_12=quantile(replicate(5000,-mean(sample(pre_a_total,99,rep=TRUE))+mean(sample(durant_a_total,7,rep=TRUE))),c(0.025,0.975))
+A_total_13=quantile(replicate(5000,-mean(sample(pre_a_total,99,rep=TRUE))+mean(sample(post_a_total,12,rep=TRUE))),c(0.025,0.975))
+A_total_14=quantile(replicate(5000,-mean(sample(pre_a_total,99,rep=TRUE))+mean(sample(post1_a_total,14,rep=TRUE))),c(0.025,0.975))
+
+A_total_12
+A_total_13
+A_total_14
+
+pvalores1=c()
+pvalores2=c()
+pvalores3=c()
+for (i in c(1:5000)) {
+  s1=sample(pre_a_total,99,rep=TRUE)
+  s2=sample(durant_a_total,7,rep=TRUE)
+  s3=sample(post_a_total,12,rep=TRUE)
+  s4=sample(post1_a_total,14,rep=TRUE)
+  pvalores1=c(pvalores1,wilcox.test(s1,s2)$p.value)
+  pvalores2=c(pvalores2,wilcox.test(s1,s3)$p.value)
+  pvalores3=c(pvalores3,wilcox.test(s1,s4)$p.value)
+}
+mean(pvalores1[251:4750])
+mean(pvalores2[251:4750])
+mean(pvalores3[251:4750])
+```
+
+
+
+
+
+
+
+## PREDURANT
+
+
+
+
+
+
+
+
+### AUTOARIMA
+```{r}
+prueba<-ts(data = PREDURANTPOST1_TOTAL[1:99], start = c(2012,1), frequency = 12)
+plot(prueba)
+descomposicion<-decompose(prueba)
+plot(descomposicion)
+T=length(prueba)
+entrenamiento=ts(data=PREDURANTPOST1_TOTAL[1:99],start=c(2012,1),frequency = 12)
+validacion=ts(data=PREDURANTPOST1_TOTAL[100:106],start=c(2020,4),frequency = 12)
+modelo=auto.arima(entrenamiento, seasonal = TRUE)
+modelo #(0,0,1),(0,1,1)[12]
+prediccion=predict(modelo, n.ahead = 7)
+```
+
+### MANUAL
+```{r}
+#MANUAL
+ 
+
+adf.test(entrenamiento, alternative = "stationary") #es estacionaria
+   #orden 2
+   #orden 1
+
+entrenamiento1=diff(entrenamiento,1)
+  
+
+adf.test(entrenamiento1, alternative = "stationary") #es estacionaria
+    #orden 0
+   #orden 0
+
+entrenamiento12=diff(entrenamiento1,12)
+plot(entrenamiento12)
+
+adf.test(entrenamiento12, alternative = "stationary") #es estacionaria
+Acf(entrenamiento12, main='')  #orden 2 los ponemos en order y orden 0 a partir del 12 lo ponemos en seasonal
+Pacf(entrenamiento12, main='') #orden 2 los ponemos en order y orden 1 a partir del 12 lo ponemos en seasonal
+
+manual=arima(entrenamiento,order=c(2,1,2),seasonal=list(order=c(1,1,0))) 
+manual
+prediccionmanual=predict(manual, n.ahead = 7)
+
+```
+
+### HOLT-WINTERS (PREDETERMINADO)
+
+```{r}
+
+m <- HoltWinters(entrenamiento,
+                  #alpha = 0.4, 
+                  #beta = 0.5, 
+                  #gamma = FALSE)
+)
+m #alpha: 0.2183032
+ # beta : 0.03327651
+ # gamma: 0.3971469
+ #seasonal: additive
+
+predHolt<- predict(m, n.ahead=7, prediction.interval=FALSE);
+predHolt[,1]
+
+```
+
+### HOLT-WINTERS MANUAL
+```{r}
+rango <- seq(0.133, 0.135, by = 0.001)
+rango2=seq(0.748, 0.749, by = 0.0005)
+rango3=seq(0.871, 0.873, by = 0.0005)
+rango4=c("additive","multiplicative")
+ERROR=100000000000000000000000
+vector=c()
+i1=NaN
+i2=NaN
+i3=NaN
+i4=NaN
+for (i in rango){
+  for (j in rango2){
+    for (k in rango3){
+      for (l in rango4){
+      if( accuracy(predict( HoltWinters(entrenamiento,alpha = i,beta = j, gamma = k,seasonal = l), n.ahead=7, prediction.interval=FALSE)[,1],PREDURANTPOST1_TOTAL[100:106])[, "RMSE"]<ERROR ){
+        i1=i
+        i2=j
+        i3=k
+        i4=l
+        ERROR=accuracy(predict( HoltWinters(entrenamiento,alpha = i,beta = j, gamma = k,seasonal = l), n.ahead=7, prediction.interval=FALSE)[,1],PREDURANTPOST1_TOTAL[100:106])[, "RMSE"] 
+        }
+      }
+    } 
+  }
+}
+m2= HoltWinters(entrenamiento,
+                  alpha = i1, 
+                  beta = i2, 
+                  gamma = i3,
+                seasonal=i4)
+
+predHolt2=predict(m2, n.ahead=7, prediction.interval=FALSE);
+c(i1,i2,i3,i4) #0.15 0.65 0.85 additive
+              #0.14 0.7 0.9 multiplicative
+              #0.135 0.74 0.879 multiplicative
+              #0.134 0.7485 0.872 multiplicative
+```
+
+
+### RED NEURONAL AUTO
+
+```{r}
+
+predred <- grnn_forecasting(entrenamiento, h = 7)
+#h=número de valores predichos (7)
+#Multiple-Step Ahead Strategy: recursive 
+#Sigma (smoothing parameter): 999977.8 
+#Autoregressive lags: 1 2 3 4 5 6 7 8 9 10 11 12
+#Number of examples: 87
+
+predred$prediction
+#predred$model
+
+```
+
+
+
+
+
+### RED NEURONAL 2
+
+```{r}
+rango <- seq(0.2283, 0.22832, by = 0.00001)
+rango2=c("recursive","MIMO")
+rango3=c("additive","multiplicative","none")
+ERROR=100000000000000000000000
+vector=c()
+i1=NaN
+i2=NaN
+i3=NaN
+for (i in rango){
+  for (j in rango2){
+    for (k in rango3){
+      if( accuracy(grnn_forecasting(entrenamiento, h = 7, lags = 1:12,sigma = i,msas=j,transform = k )$prediction,PREDURANTPOST1_TOTAL[100:106])[, "RMSE"]<ERROR ){
+        i1=i
+        i2=j
+        i3=k
+        ERROR=accuracy(grnn_forecasting(entrenamiento, h = 7, lags = 1:12,sigma = i,msas=j,transform = k )$prediction,PREDURANTPOST1_TOTAL[100:106])[,"RMSE"]
+        
+      }
+    } 
+  }
+}
+predred2 <- grnn_forecasting(entrenamiento, h = 7, lags = 1:12,sigma = i1,msas=i2,transform = i3 )
+c(i1,i2,i3) #0.2284 recursive additive mirado desde 0.0001 hasta 10 de 0.0001 en 0.0001
+            #0.22831 recursive additive mirado desde 0.00001 hasta 1 de 0.00001 en 0.00001
+
+```
+
+
+### RESULTADOS
+```{r}
+accuracy(prediccion$pred,PREDURANTPOST1_TOTAL[100:106])[, "RMSE"] #RMSE 12.74
+accuracy(prediccionmanual$pred,PREDURANTPOST1_TOTAL[100:106])[, "RMSE"] #RMSE 10.07
+accuracy(predHolt[,1],PREDURANTPOST1_TOTAL[100:106])[, "RMSE"] #8.66
+accuracy(predHolt2[,1],PREDURANTPOST1_TOTAL[100:106])[, "RMSE"] #2.779
+accuracy(predred$prediction,PREDURANTPOST1_TOTAL[100:106])[, "RMSE"] #13.13
+accuracy(predred2$prediction,PREDURANTPOST1_TOTAL[100:106])[, "RMSE"] #10.51
+
+AIC(modelo,manual) #falta de RED NEURONAL
+
+
+BIC(modelo,manual) #falta de RED NEURONAL
+
+  
+
+
+plot(x=c(1:106),y=ts(PREDURANTPOST1_TOTAL[1:106]), col = "black", type="l",ylim=c(15,50))
+lines(x=c(100:106),y=validacion, col = "blue")
+lines(x=c(100:106),y=prediccion$pred, col = "red")
+lines(x=c(100:106),y=prediccionmanual$pred, col="green")
+lines(x=c(100:106),y=predHolt[,1], col="pink")
+lines(x=c(100:106),y=predHolt2[,1], col="violet")
+lines(x=c(100:106),y=predred$prediction, col="yellow")
+lines(x=c(100:106),y=predred2$prediction, col="orange")
+
+legend("bottomleft",                            
+       legend = c("Original","AutoARIMA", "ARIMA manual", "Holt-Winters automàtic","Holt-Winters manual","Xarxa Neuronal automàtica","Xarxa Neuronal manual"),
+       col = c("blue","red", "green","pink","violet","yellow","orange"),
+       lty = 1,                              
+       lwd = 2,
+       cex=0.7) 
+```
+
+
+
+
+
+## PREDURANTPOST1
+
+
+### AUTOARIMA
+
+```{r}
+prueba<-ts(data = PREDURANTPOST1_TOTAL[1:106], start = c(2012,1), frequency = 12)
+plot(prueba)
+
+
+#AUTOARIMA
+
+descomposicion<-decompose(prueba)
+plot(descomposicion)
+#diferenciación estacional (orden 12)
+T=length(prueba)
+entrenamiento=ts(data=PREDURANTPOST1_TOTAL[1:106],start=c(2012,1),frequency = 12)
+validacion=ts(data=PREDURANTPOST1_TOTAL[107:132],start=c(2020,11),frequency = 12)
+modelo=auto.arima(entrenamiento, seasonal = TRUE)
+modelo #(2,1,0),(0,1,1)[12]
+prediccion=predict(modelo, n.ahead =26)
+
+
+```
+
+### MANUAL
+
+```{r}
+
+#MANUAL
+ 
+
+adf.test(entrenamiento, alternative = "stationary") #no es estacionaria
+
+
+entrenamiento1=diff(entrenamiento,1)
+ 
+
+adf.test(entrenamiento1, alternative = "stationary") #es estacionaria
+
+
+entrenamiento12=diff(entrenamiento1,12)
+plot(entrenamiento12)
+
+adf.test(entrenamiento12, alternative = "stationary") #es estacionaria
+Acf(entrenamiento12, main='')  #orden 0 los ponemos en order y orden 0 a partir del 12 lo ponemos en seasonal
+Pacf(entrenamiento12, main='') #orden 0 los ponemos en order y orden 0 a partir del 12 lo ponemos en seasonal
+
+manual=arima(entrenamiento,order=c(0,1,0),seasonal=list(order=c(0,1,0))) 
+prediccionmanual=predict(manual, n.ahead =26)
+
+```
+
+
+### HOLT-WINTERS AUTOMÁTICO
+```{r}
+
+m <- HoltWinters(entrenamiento)
+m #alpha: 0.4426034
+ # beta : 0.01761638
+ # gamma: 0.4157794
+ #seasonal: additive
+
+predHolt<- predict(m, n.ahead=26, prediction.interval=FALSE);
+predHolt[,1]
+
+```
+
+### HOLT-WINTERS MANUAL
+```{r}
+rango <- seq(0.1787,0.1788 , by = 0.0001)
+rango2=seq(0.7809, 0.7811, by = 0.0001)
+rango3=seq(0.1109, 0.1111, by = 0.0001)
+rango4=c("additive","multiplicative")
+ERROR=100000000000000000000000
+vector=c()
+i1=NaN
+i2=NaN
+i3=NaN
+i4=NaN
+for (i in rango){
+  for (j in rango2){
+    for (k in rango3){
+      for (l in rango4){
+      if( accuracy(predict( HoltWinters(entrenamiento,alpha = i,beta = j, gamma = k,seasonal = l), n.ahead=26, prediction.interval=FALSE)[,1],PREDURANTPOST1_TOTAL[107:132])[, "RMSE"]<ERROR ){
+        i1=i
+        i2=j
+        i3=k
+        i4=l
+        ERROR=accuracy(predict( HoltWinters(entrenamiento,alpha = i,beta = j, gamma = k,seasonal = l), n.ahead=26, prediction.interval=FALSE)[,1],PREDURANTPOST1_TOTAL[107:132])[, "RMSE"] 
+        }}} }}
+m2= HoltWinters(entrenamiento,alpha = i1,beta = i2,gamma = i3,seasonal=i4)
+
+predHolt2=predict(m2, n.ahead=26, prediction.interval=FALSE);
+c(i1,i2,i3,i4) #0.2 0.7 0 multiplicative
+              #0.18 0.77 0.1 multiplicative
+              #0.179 0.78 0.11 multiplicative
+              #0.1788 0.781 0.111 multiplicative
+```
+
+
+
+
+### RED NEURONAL 1
+
+```{r}
+
+predred <- grnn_forecasting(entrenamiento, h = 26)
+predred
+predred$prediction
+
+```
+
+
+### RED NEURONAL 2
+
+```{r}
+
+rango <- seq(11.267, 11.268, by =0.0001)
+rango2=c("recursive","MIMO")
+rango3=c("additive","multiplicative","none")
+ERROR=100000000000000000000000
+vector=c()
+i1=NaN
+i2=NaN
+i3=NaN
+for (i in rango){
+  for (j in rango2){
+    for (k in rango3){
+      if( accuracy(grnn_forecasting(entrenamiento, h = 26, lags = 1:12,sigma = i,msas=j,transform = k )$prediction,PREDURANTPOST1_TOTAL[107:132])[, "RMSE"]<ERROR ){
+        i1=i
+        i2=j
+        i3=k
+        ERROR=accuracy(grnn_forecasting(entrenamiento, h = 26, lags = 1:12,sigma = i,msas=j,transform = k )$prediction,PREDURANTPOST1_TOTAL[107:132])[,"RMSE"]
+        
+      }
+    } 
+  }
+}
+predred2 <- grnn_forecasting(entrenamiento, h = 26, lags = 1:12,sigma = i1,msas=i2,transform = i3 )
+c(i1,i2,i3) #12 recursive none mirado desde 1 hasta 10000 de 1 en 1
+            #11.3 recursive none mirado desde 0.1 hasta 100 de 0.1 en 0.1
+            #11.27 recursive none mirado desde 1 hasta 100 de 0.01 en 0.01
+            #11.2679 recursive none mirado desde 10 hasta 12 de 0.0001 en 0.0001
+
+```
+
+
+### RESULTADOS
+
+```{r}
+
+accuracy(prediccion$pred,PREDURANTPOST1_TOTAL[107:132]) #RMSE 16.8087
+accuracy(prediccionmanual$pred,PREDURANTPOST1_TOTAL[107:132]) #RMSE 31.4678
+accuracy(predHolt[,1],PREDURANTPOST1_TOTAL[107:132])[, "RMSE"] #13.32051
+accuracy(predHolt2[,1],PREDURANTPOST1_TOTAL[107:132])[, "RMSE"] #3.6185
+accuracy(predred$prediction,PREDURANTPOST1_TOTAL[107:132]) #RMSE 10.74
+accuracy(predred2$prediction,PREDURANTPOST1_TOTAL[107:132]) #RMSE 4.40
+
+AIC(modelo,manual)
+
+
+BIC(modelo,manual)
+
+plot(forecast(manual,h=26))
+
+
+plot(x=c(1:132),y=ts(PREDURANTPOST1_TOTAL), col = "black", type="l",ylim = c(0,50))
+lines(x=c(107:132),y=validacion, col = "blue")
+lines(x=c(107:132),y=prediccion$pred, col = "red")
+lines(x=c(107:132),y=prediccionmanual$pred, col="green")
+lines(x=c(107:132),y=predHolt[,1], col="pink")
+lines(x=c(107:132),y=predHolt2[,1], col="violet")
+lines(x=c(107:132),y=predred$prediction, col="yellow")
+lines(x=c(107:132),y=predred2$prediction, col="orange")
+legend("bottomleft",                            
+       legend = c("Original","AutoARIMA", "ARIMA manual", "Holt-Winters automàtic","Holt-Winters manual","Xarxa Neuronal automàtica","Xarxa Neuronal manual"),
+       col = c("blue","red", "green","pink","violet","yellow","orange"),
+       lty = 1,                              
+       lwd = 2,
+       cex=0.7) 
+
+```
+
+
+
+
+
+
+## PREDURANTPOST1POST2
+
+### AUTOARIMA
+
+```{r}
+prueba<-ts(data = PREDURANTPOST1_TOTAL[1:118], start = c(2012,1), frequency = 12)
+plot(prueba)
+descomposicion<-decompose(prueba)
+plot(descomposicion)
+T=length(prueba)
+entrenamiento=ts(data=PREDURANTPOST1_TOTAL[1:118],start=c(2012,1),frequency = 12)
+validacion=ts(data=PREDURANTPOST1_TOTAL[119:132],start=c(2021,11),frequency = 12)
+modelo=auto.arima(entrenamiento, seasonal = TRUE)
+modelo #(2,1,1),(0,1,1)[12]
+prediccion=predict(modelo, n.ahead=14)
+```
+
+### MANUAL
+
+```{r}
+adf.test(entrenamiento, alternative = "stationary") #no es estacionaria
+entrenamiento1=diff(entrenamiento,1)
+adf.test(entrenamiento1, alternative = "stationary") #es estacionaria
+entrenamiento12=diff(entrenamiento1,12)
+plot(entrenamiento12)
+adf.test(entrenamiento12, alternative = "stationary") #es estacionaria
+Acf(entrenamiento12, main='')  #orden 0 los ponemos en order y orden 0 a partir del 12 lo ponemos en seasonal
+Pacf(entrenamiento12, main='') #orden 0 los ponemos en order y orden 0 a partir del 12 lo ponemos en seasonal
+manual=arima(entrenamiento,order=c(0,1,0),seasonal=list(order=c(0,1,0))) 
+prediccionmanual=predict(manual, n.ahead=14)
+```
+
+
+### HOLT-WINTERS AUTOMÁTICO
+```{r}
+
+m <- HoltWinters(entrenamiento)
+m$seasonal #alpha: 0.6958774
+ # beta :  0
+ # gamma: 0.6901552
+ #seasonal: additive
+
+predHolt<- predict(m, n.ahead=14, prediction.interval=FALSE);
+predHolt[,1]
+
+```
+
+### HOLT-WINTERS MANUAL
+```{r}
+rango <- seq(0.1249,0.1251 , by = 0.00005)
+rango2=seq(0.6204,0.6206, by = 0.00005)
+rango3=seq(0.8230, 0.8232, by = 0.00005)
+rango4=c("additive","multiplicative")
+ERROR=100000000000000000000000
+vector=c()
+i1=NaN
+i2=NaN
+i3=NaN
+i4=NaN
+for (i in rango){
+  for (j in rango2){
+    for (k in rango3){
+      for (l in rango4){
+      if( accuracy(predict( HoltWinters(entrenamiento,alpha = i,beta = j, gamma = k,seasonal = l), n.ahead=14, prediction.interval=FALSE)[,1],PREDURANTPOST1_TOTAL[119:132])[, "RMSE"]<ERROR ){
+        i1=i
+        i2=j
+        i3=k
+        i4=l
+        ERROR=accuracy(predict( HoltWinters(entrenamiento,alpha = i,beta = j, gamma = k,seasonal = l), n.ahead=14, prediction.interval=FALSE)[,1],PREDURANTPOST1_TOTAL[119:132])[, "RMSE"] 
+        }}} }}
+m2= HoltWinters(entrenamiento,alpha = i1,beta = i2,gamma = i3,seasonal=i4)
+
+predHolt2=predict(m2, n.ahead=14, prediction.interval=FALSE);
+c(i1,i2,i3,i4) #0.125 0.625 0.825 additive
+              #0.125 0.6205 0.82315 additive
+```
+
+### RED NEURONAL 1
+
+```{r}
+
+predred <- grnn_forecasting(entrenamiento, h = 14)
+predred
+predred$prediction
+
+```
+
+### RED NEURONAL 2
+
+```{r}
+
+rango <- seq(21.5811, 21.5813, by =0.00001)
+rango2=c("recursive","MIMO")
+rango3=c("additive","multiplicative","none")
+ERROR=100000000000000000000000
+vector=c()
+i1=NaN
+i2=NaN
+i3=NaN
+for (i in rango){
+  for (j in rango2){
+    for (k in rango3){
+      if( accuracy(grnn_forecasting(entrenamiento, h = 14, lags = 1:12,sigma = i,msas=j,transform = k )$prediction,PREDURANTPOST1_TOTAL[119:132])[, "RMSE"]<ERROR ){
+        i1=i
+        i2=j
+        i3=k
+        ERROR=accuracy(grnn_forecasting(entrenamiento, h = 14, lags = 1:12,sigma = i,msas=j,transform = k )$prediction,PREDURANTPOST1_TOTAL[119:132])[,"RMSE"]
+        
+      }
+    } 
+  }
+}
+predred2 <- grnn_forecasting(entrenamiento, h = 14, lags = 1:12,sigma = i1,msas=i2,transform = i3 )
+c(i1,i2,i3) #22 recursive none mirado desde 1 hasta 10000 de 1 en 1
+            #21.6 recursive none mirado desde 10 hasta 1000 de 0.1 en 0.1
+            #21.58122 recursive none mirado desde 21.5 hasta 21.7 de 0.00001 en 0.00001
+            
+
+```
+
+
+### RESULTADOS
+
+```{r}
+accuracy(prediccion$pred,PREDURANTPOST1_TOTAL[119:132])[, "RMSE"] #RMSE 9.42
+accuracy(prediccionmanual$pred,PREDURANTPOST1_TOTAL[119:132])[, "RMSE"] #RMSE 3.63
+accuracy(predHolt[,1],PREDURANTPOST1_TOTAL[119:132])[, "RMSE"] #7.409
+accuracy(predHolt2[,1],PREDURANTPOST1_TOTAL[119:132])[, "RMSE"] #2.6049
+accuracy(predred$prediction,PREDURANTPOST1_TOTAL[119:132])[, "RMSE"] #RMSE 12.44
+accuracy(predred2$prediction,PREDURANTPOST1_TOTAL[119:132])[, "RMSE"] #RMSE 4.44
+AIC(modelo,manual)
+BIC(modelo,manual)
+plot(forecast(manual,h=14))
+plot(x=c(1:132),y=ts(PREDURANTPOST1_TOTAL), col = "black", type="l",ylim = c(20,50))
+lines(x=c(119:132),y=validacion, col = "blue")
+lines(x=c(119:132),y=prediccion$pred, col = "red")
+lines(x=c(119:132),y=prediccionmanual$pred, col="green")
+lines(x=c(119:132),y=predHolt[,1], col="pink")
+lines(x=c(119:132),y=predHolt2[,1], col="violet")
+lines(x=c(119:132),y=predred$prediction, col="yellow")
+lines(x=c(119:132),y=predred2$prediction, col="orange")
+
+legend("bottomleft",                            
+       legend = c("Original","AutoARIMA", "ARIMA manual", "Holt-Winters automàtic","Holt-Winters manual","Xarxa Neuronal automàtica","Xarxa Neuronal manual"),
+       col = c("blue","red", "green","pink","violet","yellow","orange"),
+       lty = 1,                              
+       lwd = 2,
+       cex=0.7) 
+```
+
+
